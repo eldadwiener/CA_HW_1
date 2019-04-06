@@ -8,8 +8,12 @@
 enum mode{GLOBAL,LOCAL};
 enum branch{N,T};
 enum state{SNT,WNT,WT,ST};
+enum shared{NUN = 0,LSB = 2,MID = 16}; // shift pc by shared and 'and' with history mask, to get the needed bits for the XOR
 
 using namespace std;
+
+class BTB;
+BTB* btb = NULL;
 
 class History
 {
@@ -174,37 +178,134 @@ class BTB
 {
 public:
     BTB(unsigned int numEntries, unsigned int histSize, unsigned int tagSize, state fsmInitState, mode hmode, mode fmode, int shared):
-            _history(numEntries,histSize,hmode),
-            _fsm(numEntries,fmode,histSize,fsmInitState),
-            _BTBentries(), _numEntries(numEntries), _tagMask((1 << tagSize) - 1), _rowMask((1 << numEntries) - 1) {}
+            _history(numEntries,histSize,hmode), _fsm(numEntries,fmode,histSize,fsmInitState), _brNum(0), _flushNum(0),
+            _numEntries(numEntries), _tagMask((1 << tagSize) - 1), _rowMask(numEntries - 1), _histMask((1 << histSize) - 1)
+    {
+        _BTBentries = new BTBEntry[numEntries];
+        if (shared == 0)
+        {
+            _shareMode = NUN;
+            _histMask = 0; // don't need to XOR at all, so will XOR with 0
+        }
+        else if (shared == 1) 
+            _shareMode = LSB;
+        else 
+            _shareMode = MID;
+    }
+    bool predict(uint32_t pc, uint32_t *dst)
+    {
+        // Get row num, and Tag
+        unsigned row = ((pc >> 2) & _rowMask); //remove 2 lsb zeroes, and taken same amount of bits as in the mask.
+        unsigned tag = ((pc >> 2) & _tagMask);
+        // Check if such a tag exists in the BTB
+        // TODO: is it possible for the PC the be 0x0? what happens if the btbentry wasn't used yet?
+        if (_BTBentries[row].tag != tag) // no prediction available
+        {
+            *dst = pc + 4;
+            return false;
+        }
+        // Prediction available, get history
+        uint8_t hist = _history.getHistory(row);
+        // fix history in case we use l/g-share
+        hist = ( (pc >> _shareMode) & _histMask) ^ hist;
+        // finally get prediction for this given history
+        branch predict = _fsm.getPredict(row, hist);
+        if (predict == N)
+        {
+            *dst = pc + 4;
+            return false;
+        }
+        else
+        {
+            *dst = _BTBentries[row].targ;
+            return true;
+        }
+    }
+    void update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst)
+    {
+        //TODO: check what needs to happen if the prediction was correct, but wrong dest address,
+        //      do we completely reset the BTB entry? or just update the destination?
 
-    bool predict(uint32_t pc, uint32_t *dst);
-    void update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst);
-    void GetStats(SIM_stats *curStats);
+        // update stats
+        ++_brNum;
+        if (pred_dst != targetPc) ++_flushNum;
+        // Get row num, and Tag
+        unsigned row = ((pc >> 2) & _rowMask); //remove 2 lsb zeroes, and taken same amount of bits as in the mask.
+        unsigned tag = ((pc >> 2) & _tagMask);
+        // Check if such a tag exists in the BTB
+        // TODO: is it possible for the PC the be 0x0? what happens if the btbentry wasn't used yet?
+        if (_BTBentries[row].tag != tag) // Tag does not exist 
+        {   // TODO what happens if only need to update the targetPC?
+            // these will not reset if they are global
+            _history.resetEntry(row);
+            _fsm.resetEntry(row);
+        }
+        // update BTB entry
+        _BTBentries[row].updateBTBEntry(tag, targetPc);
+        // get old history to update FSM, and update history
+        uint8_t hist = _history.getHistory(row);
+        branch res = (taken) ? T : N;
+        _history.updateHistory(row, res);
+        // fix hist in case we use l/g-share, and update FSM
+        hist = ( (pc >> _shareMode) & _histMask) ^ hist;
+        _fsm.updatePredict(row, hist, res);
+    }
+    void GetStats(SIM_stats *curStats)
+    {   // TODO: THIS
+        curStats->br_num = _brNum;
+        curStats->flush_num = _flushNum;
+        curStats->size = 0;
+    }
 
 
 private:
     History _history;
     FSM _fsm;
-    BTBEntry _BTBentries;
-    unsigned int _numEntries, _tagMask, _rowMask;
-    // TODO what to do with 'using' parameters
+    BTBEntry* _BTBentries;
+    unsigned int _numEntries, _tagMask, _rowMask, _histMask;
+    shared _shareMode;
+    unsigned int _brNum, _flushNum;
 };
 
 int BP_init(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned fsmState,
 			bool isGlobalHist, bool isGlobalTable, int Shared){
-	return -1;
+    if (btb != NULL) // already initiated
+	    return -1;
+    mode hmode = (isGlobalHist == true) ? GLOBAL : LOCAL;
+    mode fmode = (isGlobalTable == true) ? GLOBAL : LOCAL;
+    state initstate;
+    // TODO: check if you can cast fsmState into (state) directly, this shiz is ugly
+    switch (fsmState)
+    {
+    case 0:
+        initstate = SNT;
+        break;
+    case 1:
+        initstate = WNT;
+        break;
+    case 2:
+        initstate = WT;
+        break;
+    case 3:
+        initstate = ST;
+        break;
+    }
+    btb = new BTB(btbSize, historySize, tagSize, initstate, hmode, fmode, Shared);
+    return 0;
 }
 
 bool BP_predict(uint32_t pc, uint32_t *dst){
-	return false;
+	return btb->predict(pc,dst);
 }
 
 void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
+    btb->update(pc, targetPc, taken, pred_dst);
 	return;
 }
 
 void BP_GetStats(SIM_stats *curStats){
+    btb->GetStats(curStats);
 	return;
 }
+
 
