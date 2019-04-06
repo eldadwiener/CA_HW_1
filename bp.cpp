@@ -5,6 +5,8 @@
 #include <assert.h>
 #include <math.h>
 #include <cstddef>
+#include <bitset>
+#include <iostream>
 
 enum mode{GLOBAL,LOCAL};
 enum branch{N,T};
@@ -45,10 +47,13 @@ public:
         assert(rowNum < _nLines);
         if (_hmode == GLOBAL)
             rowNum = 0;
+		cout << "the history was " << std::bitset<8>((uint32_t)_arr[rowNum]) << endl;//DEBUG
         // get rid of the MSB to make sure we don't shift too much
         _arr[rowNum] &= (_mask >> 1);
-        // add new bit, 1/0 depending on res
+		cout << "the history after & with _mask >> 1 is: " << std::bitset<8>((uint32_t)_arr[rowNum]) << endl;//DEBUG
+		// add new bit, 1/0 depending on res
         _arr[rowNum] = (_arr[rowNum] << 1) + res;
+		cout << "and the history now is " << std::bitset<8>((uint32_t)_arr[rowNum]) << endl;//DEBUG
     }
     void resetEntry(unsigned rowNum)
     {
@@ -86,15 +91,20 @@ public:
     {
         // DEBUG, make sure we don't overflow
         assert(nLine < _nLines);
-        if (_fsms[nLine] == WT || _fsms[nLine] == ST)
-            return T;
+		if (_fsms[nLine] == WT || _fsms[nLine] == ST) {
+			cout << "the state is " << _fsms[nLine] << " and the predict is T" << endl;//DEBUG
+			return T;
+		}
+		cout << "the state is " << _fsms[nLine]<<" and the predict is NT" << endl;//DEBUG
         return N;
     }
 
     void updateFSM(uint8_t nLine, branch res)
     {
         // DEBUG, make sure we don't overflow
+		cout << "the state was " << _fsms[nLine]<<" and the res is "<< res << endl;//DEBUG
         assert(nLine < _nLines);
+
         switch (_fsms[nLine]) 
         {
         case SNT:
@@ -110,7 +120,9 @@ public:
             _fsms[nLine] = ((res == T) ? ST : WT);
             break;
         }
+		cout << "and now the state is " << _fsms[nLine] << endl;//DEBUG
     }
+
     void resetEntry()
     {
         for (int i = 0; i < _nLines; ++i)
@@ -125,7 +137,7 @@ private:
 class FSM
 {
 public:
-    FSM(uint32_t nLines, mode fmode, unsigned int histSize, state initState) : _fmode(fmode), _histSize(histSize), _nLines(nLines) 
+    FSM(uint32_t nLines, mode fmode, unsigned int histSize, state initState) : _fsmMode(fmode), _histSize(histSize), _nLines(nLines) 
     {
         if (fmode == GLOBAL) nLines = 1;
         _entries = new FSMEntry[nLines];
@@ -136,14 +148,14 @@ public:
 
     branch getPredict(uint32_t rowNum, uint8_t history)
     {
-        if (_fmode == GLOBAL) // theres only 1 FSM
+        if (_fsmMode == GLOBAL) // theres only 1 FSM
             rowNum = 0;
         return _entries[rowNum].getPredict(history);
     }
 
     void updatePredict(uint32_t rowNum, uint8_t history, branch res)
     {
-        if (_fmode == GLOBAL) // theres only 1 FSM
+        if (_fsmMode == GLOBAL) // theres only 1 FSM
             rowNum = 0;
         _entries[rowNum].updateFSM(history,res);
     }
@@ -152,12 +164,12 @@ public:
     {
         // DEBUG, make sure no SEG fault
         assert(rowNum < _nLines);
-        if (_fmode == GLOBAL)
+        if (_fsmMode == GLOBAL)
             return;
         _entries[rowNum].resetEntry();
     }
 private:
-    mode _fmode;
+    mode _fsmMode;
     FSMEntry* _entries;
     unsigned int _histSize;
     uint32_t _nLines;
@@ -230,10 +242,12 @@ public:
 
         // update stats
         ++_brNum;
+		cout << "transaction num: " << _brNum << endl;//DEBUG
         if ((taken && (pred_dst != targetPc))
             || (!taken && (pred_dst != pc + 4)))
         {
             ++_flushNum;
+			cout << "BTB miss num: "<< _flushNum << endl;//DEBUG
         }
         // Get row num, and Tag
         unsigned row = ((pc >> 2) & _rowMask); //remove 2 lsb zeroes, and taken same amount of bits as in the mask.
