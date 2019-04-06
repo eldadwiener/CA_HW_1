@@ -4,6 +4,7 @@
 #include "bp_api.h"
 #include <assert.h>
 #include <math.h>
+#include <cstddef>
 
 enum mode{GLOBAL,LOCAL};
 enum branch{N,T};
@@ -18,7 +19,7 @@ BTB* btb = NULL;
 class History
 {
 public:
-    History(uint8_t nLines,unsigned int histSize, mode hmode) : _hmode(hmode), _nLines(nLines)
+    History(uint8_t nLines,unsigned int histSize, mode hmode) : _nLines(nLines), _hmode(hmode) 
     {
         if (hmode == GLOBAL) nLines = 1;
         _arr = new uint8_t[nLines];
@@ -124,11 +125,11 @@ private:
 class FSM
 {
 public:
-    FSM(uint32_t nLines, mode fmode, unsigned int histSize, state initState) : _nLines(nLines), _fmode(fmode), _histSize(histSize)
+    FSM(uint32_t nLines, mode fmode, unsigned int histSize, state initState) : _fmode(fmode), _histSize(histSize), _nLines(nLines) 
     {
         if (fmode == GLOBAL) nLines = 1;
         _entries = new FSMEntry[nLines];
-        for(int i=0; i< nLines; ++i)
+        for(unsigned i=0; i< nLines; ++i)
             _entries[i].initFSMEntry(pow(2,histSize),initState);
     }
     ~FSM() { delete[] _entries; }
@@ -178,8 +179,9 @@ class BTB
 {
 public:
     BTB(unsigned int numEntries, unsigned int histSize, unsigned int tagSize, state fsmInitState, mode hmode, mode fmode, int shared):
-            _history(numEntries,histSize,hmode), _fsm(numEntries,fmode,histSize,fsmInitState), _brNum(0), _flushNum(0),
-            _numEntries(numEntries), _tagMask((1 << tagSize) - 1), _rowMask(numEntries - 1), _histMask((1 << histSize) - 1)
+            _history(numEntries,histSize,hmode), _fsm(numEntries,fmode,histSize,fsmInitState),
+            _numEntries(numEntries), _tagMask((1 << tagSize) - 1), _rowMask(numEntries - 1), _histMask((1 << histSize) - 1),            
+            _brNum(0), _flushNum(0)
     {
         _BTBentries = new BTBEntry[numEntries];
         if (shared == 0)
