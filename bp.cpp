@@ -230,7 +230,11 @@ public:
 
         // update stats
         ++_brNum;
-        if (pred_dst != targetPc) ++_flushNum;
+        if ((taken && (pred_dst != targetPc))
+            || (!taken && (pred_dst != pc + 4)))
+        {
+            ++_flushNum;
+        }
         // Get row num, and Tag
         unsigned row = ((pc >> 2) & _rowMask); //remove 2 lsb zeroes, and taken same amount of bits as in the mask.
         unsigned tag = ((pc >> 2) & _tagMask);
