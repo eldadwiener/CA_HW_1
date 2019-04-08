@@ -19,6 +19,11 @@ using namespace std;
 class BTB;
 BTB* btb = NULL;
 
+
+// History Class:
+//   Used to manage the history registers for the entire BTB.
+//   In charge of all history decisions, the BTB just asks to get/update the history
+//   based on the row number in the BTB, and handles global history as well.
 class History
 {
 public:
@@ -32,7 +37,9 @@ public:
     }
     
     ~History() { delete[] _arr; }
-
+    
+    // get/update methods: 
+    //      if we are in GLOBAL mode, treat the array as a normal pointer instead.
     uint8_t getHistory(unsigned int rowNum)
     {
         // DEBUG, make sure no SEG fault
@@ -48,19 +55,15 @@ public:
         assert(rowNum < _nLines);
         if (_hmode == GLOBAL)
             rowNum = 0;
-		//cout << "the history was " << std::bitset<8>((uint32_t)_arr[rowNum]) << endl;//DEBUG
-        // get rid of the MSB to make sure we don't shift too much
         _arr[rowNum] &= (_mask >> 1);
-		//cout << "the history after & with _mask >> 1 is: " << std::bitset<8>((uint32_t)_arr[rowNum]) << endl;//DEBUG
-		// add new bit, 1/0 depending on res
         _arr[rowNum] = (_arr[rowNum] << 1) + res;
-		//cout << "and the history now is " << std::bitset<8>((uint32_t)_arr[rowNum]) << endl;//DEBUG
     }
+
     void resetEntry(unsigned rowNum)
     {
         // DEBUG, make sure no SEG fault
         assert(rowNum < _nLines);
-        if (_hmode == GLOBAL)
+        if (_hmode == GLOBAL) // reset is not done if we are in global mode.
             return;
         _arr[rowNum] = 0;
     }
@@ -69,6 +72,8 @@ private:
     uint8_t _mask, _nLines;
     const mode _hmode;
 };
+
+
 
 class FSMEntry
 {
@@ -79,6 +84,8 @@ public:
         if (_fsms != NULL) delete[] _fsms; 
     }
 
+    // since we are dynamically allocating the FSM entry array,
+    // we use a default constructor and do the init manually.
     void initFSMEntry(uint8_t nLines, state initState)
     {
         _initState = initState;
@@ -92,20 +99,19 @@ public:
     {
         // DEBUG, make sure we don't overflow
         assert(nLine < _nLines);
-		if (_fsms[nLine] == WT || _fsms[nLine] == ST) {
-			//cout << "the state is " << _fsms[nLine] << " and the predict is T" << endl;//DEBUG
+        // return T if we are in Strongly-Taken or Weakly-Taken states
+		if (_fsms[nLine] == WT || _fsms[nLine] == ST)
+        {
 			return T;
 		}
-		//cout << "the state is " << _fsms[nLine]<<" and the predict is NT" << endl;//DEBUG
         return N;
     }
 
     void updateFSM(uint8_t nLine, branch res)
     {
         // DEBUG, make sure we don't overflow
-		//cout << "the state was " << _fsms[nLine]<<" and the res is "<< res << endl;//DEBUG
         assert(nLine < _nLines);
-
+        // decide next state based on current state + new result
         switch (_fsms[nLine]) 
         {
         case SNT:
@@ -121,7 +127,6 @@ public:
             _fsms[nLine] = ((res == T) ? ST : WT);
             break;
         }
-		//cout << "and now the state is " << _fsms[nLine] << endl;//DEBUG
     }
 
     void resetEntry()
@@ -135,6 +140,11 @@ private:
     state _initState;
 };
 
+
+// FSM Class:
+//   Used to manage the FSM's for the entire BTB.
+//   Will keep track of all FSM's, and execute requests made by the BTB.
+//   Just like with the history class, the fsm will handle all special cases itself.
 class FSM
 {
 public:
@@ -147,6 +157,9 @@ public:
     }
     ~FSM() { delete[] _entries; }
 
+    // go to the relevant FSM entry (indicated by rowNum), 
+    // or to the global one if we are in global mode,
+    // and request a prediction for the given history
     branch getPredict(uint32_t rowNum, uint8_t history)
     {
         if (_fsmMode == GLOBAL) // theres only 1 FSM
@@ -176,6 +189,10 @@ private:
     uint32_t _nLines;
 };
 
+// BTBEntry Class:
+//   each entry corresponds to a row number in the BTB,
+//   and keeps track of the row's current tag and predicted destination address.
+//   also keeps a valid bit to make sure we look at valid data.
 class BTBEntry
 {
 public:
@@ -189,9 +206,15 @@ public:
 	bool valid;
 };
 
+// BTBEntry Class:
+//   Represents the BTB in the system, and is the main entity operating in the code.
+//   the BTB keeps the history,fsm and entries of the system.
+//   it parses the commands given by the main functions (BP_init/predict/update/ GetStats)
+//   and directs the relevant instructions to the history and fsm objects.
 class BTB
 {
 public:
+    // pretty much initiates the whole system, very wow
     BTB(unsigned int numEntries, unsigned int histSize, unsigned int tagSize, state fsmInitState, mode hmode, mode fmode, int shared):
             _history(numEntries,histSize,hmode), _fsm(numEntries,fmode,histSize,fsmInitState),
             _numEntries(numEntries), _tagMask((1 << tagSize) - 1), _rowMask(numEntries - 1), _histMask((1 << histSize) - 1),            
@@ -211,6 +234,10 @@ public:
         else 
             _shareMode = MID;
     }
+
+    ~BTB() { delete[] _BTBentries; }
+
+    
     bool predict(uint32_t pc, uint32_t *dst)
     {
         // Get row num, and Tag
@@ -239,24 +266,24 @@ public:
             return true;
         }
     }
+    
     void update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst)
     {
         // update stats
         ++_brNum;
-		//cout << "transaction num: " << _brNum << endl;//DEBUG
         if ((taken && (pred_dst != targetPc))
             || (!taken && (pred_dst != pc + 4)))
         {
             ++_flushNum;
-			//cout << "BTB miss num: "<< _flushNum << endl;//DEBUG
         }
         // Get row num, and Tag
-        unsigned row = ((pc >> 2) & _rowMask); //remove 2 lsb zeroes, and taken same amount of bits as in the mask.
+        // remove 2 lsb zeroes, and taken same amount of bits as in the mask.
+        unsigned row = ((pc >> 2) & _rowMask); 
         unsigned tag = ((pc >> 2) & _tagMask);
         // Check if such a tag exists in the BTB
         if (_BTBentries[row].tag != tag ) // Tag does not exist 
         {   
-            // these will not reset if they are global
+            // (these will check if they are in global mode by themselves)
             _history.resetEntry(row);
             _fsm.resetEntry(row);
         }
@@ -289,6 +316,7 @@ private:
     unsigned int _brNum, _flushNum, _size;
 };
 
+// parse the inputs and create the BTB, WOOHOO
 int BP_init(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned fsmState,
 			bool isGlobalHist, bool isGlobalTable, int Shared){
     if (btb != NULL) // already initiated
@@ -300,6 +328,7 @@ int BP_init(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned f
     return 0;
 }
 
+// Simply let the BTB handle the rest of these, he is a god 
 bool BP_predict(uint32_t pc, uint32_t *dst){
 	return btb->predict(pc,dst);
 }
