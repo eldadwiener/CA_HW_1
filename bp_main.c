@@ -88,7 +88,7 @@ int main(int argc, char **argv) {
 		for (i = 1; i < 3; ++i) {
 			elemnts[i] = strtok(NULL, " \n");
 		}
-		uint32_t pc = (uint32_t) strtol(elemnts[0], NULL, 0);
+		uint32_t pc = (uint32_t) strtoul(elemnts[0], NULL, 0);
 		uint32_t targetPc = (uint32_t) strtol(elemnts[2], NULL, 0);
 		bool taken;
 		if (strcmp(elemnts[1], "T") == 0) {

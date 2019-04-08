@@ -2,11 +2,12 @@
 /* This file should hold your implementation of the predictor simulator */
 
 #include "bp_api.h"
-#include <assert.h>
 #include <math.h>
 #include <cstddef>
 #include <bitset>
 #include <iostream>
+#define NDEBUG
+#include <assert.h>
 
 enum mode{GLOBAL,LOCAL};
 enum branch{N,T};
@@ -47,13 +48,13 @@ public:
         assert(rowNum < _nLines);
         if (_hmode == GLOBAL)
             rowNum = 0;
-		cout << "the history was " << std::bitset<8>((uint32_t)_arr[rowNum]) << endl;//DEBUG
+		//cout << "the history was " << std::bitset<8>((uint32_t)_arr[rowNum]) << endl;//DEBUG
         // get rid of the MSB to make sure we don't shift too much
         _arr[rowNum] &= (_mask >> 1);
-		cout << "the history after & with _mask >> 1 is: " << std::bitset<8>((uint32_t)_arr[rowNum]) << endl;//DEBUG
+		//cout << "the history after & with _mask >> 1 is: " << std::bitset<8>((uint32_t)_arr[rowNum]) << endl;//DEBUG
 		// add new bit, 1/0 depending on res
         _arr[rowNum] = (_arr[rowNum] << 1) + res;
-		cout << "and the history now is " << std::bitset<8>((uint32_t)_arr[rowNum]) << endl;//DEBUG
+		//cout << "and the history now is " << std::bitset<8>((uint32_t)_arr[rowNum]) << endl;//DEBUG
     }
     void resetEntry(unsigned rowNum)
     {
@@ -92,17 +93,17 @@ public:
         // DEBUG, make sure we don't overflow
         assert(nLine < _nLines);
 		if (_fsms[nLine] == WT || _fsms[nLine] == ST) {
-			cout << "the state is " << _fsms[nLine] << " and the predict is T" << endl;//DEBUG
+			//cout << "the state is " << _fsms[nLine] << " and the predict is T" << endl;//DEBUG
 			return T;
 		}
-		cout << "the state is " << _fsms[nLine]<<" and the predict is NT" << endl;//DEBUG
+		//cout << "the state is " << _fsms[nLine]<<" and the predict is NT" << endl;//DEBUG
         return N;
     }
 
     void updateFSM(uint8_t nLine, branch res)
     {
         // DEBUG, make sure we don't overflow
-		cout << "the state was " << _fsms[nLine]<<" and the res is "<< res << endl;//DEBUG
+		//cout << "the state was " << _fsms[nLine]<<" and the res is "<< res << endl;//DEBUG
         assert(nLine < _nLines);
 
         switch (_fsms[nLine]) 
@@ -120,7 +121,7 @@ public:
             _fsms[nLine] = ((res == T) ? ST : WT);
             break;
         }
-		cout << "and now the state is " << _fsms[nLine] << endl;//DEBUG
+		//cout << "and now the state is " << _fsms[nLine] << endl;//DEBUG
     }
 
     void resetEntry()
@@ -240,24 +241,21 @@ public:
     }
     void update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst)
     {
-        //TODO: check what needs to happen if the prediction was correct, but wrong dest address,
-        //      do we completely reset the BTB entry? or just update the destination?
-
         // update stats
         ++_brNum;
-		cout << "transaction num: " << _brNum << endl;//DEBUG
+		//cout << "transaction num: " << _brNum << endl;//DEBUG
         if ((taken && (pred_dst != targetPc))
             || (!taken && (pred_dst != pc + 4)))
         {
             ++_flushNum;
-			cout << "BTB miss num: "<< _flushNum << endl;//DEBUG
+			//cout << "BTB miss num: "<< _flushNum << endl;//DEBUG
         }
         // Get row num, and Tag
         unsigned row = ((pc >> 2) & _rowMask); //remove 2 lsb zeroes, and taken same amount of bits as in the mask.
         unsigned tag = ((pc >> 2) & _tagMask);
         // Check if such a tag exists in the BTB
-        if (_BTBentries[row].tag != tag || _BTBentries[row].targ != targetPc) // Tag does not exist 
-        {   // TODO what happens if only need to update the targetPC?
+        if (_BTBentries[row].tag != tag ) // Tag does not exist 
+        {   
             // these will not reset if they are global
             _history.resetEntry(row);
             _fsm.resetEntry(row);
