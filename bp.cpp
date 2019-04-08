@@ -195,6 +195,9 @@ public:
             _numEntries(numEntries), _tagMask((1 << tagSize) - 1), _rowMask(numEntries - 1), _histMask((1 << histSize) - 1),            
             _brNum(0), _flushNum(0)
     {
+		_size = numEntries * (tagSize + 32) //BTB size = (num of entries)*(size of line) TODO:maybe 30 instead of 32 
+			+ histSize * (numEntries*hmode + 1 - hmode) //hist size = histsize*(num of hists)
+			+ 2*pow(2,histSize)*(numEntries*fmode + 1 - fmode);// FSM size = (num of FSMs)*(sizeof FSM entry=2)*2^(histsize)
         _BTBentries = new BTBEntry[numEntries];
         if (shared == 0)
         {
@@ -274,7 +277,7 @@ public:
     {   // TODO: THIS
         curStats->br_num = _brNum;
         curStats->flush_num = _flushNum;
-        curStats->size = 0;
+        curStats->size = _size;
     }
 
 
@@ -284,7 +287,7 @@ private:
     BTBEntry* _BTBentries;
     unsigned int _numEntries, _tagMask, _rowMask, _histMask;
     shared _shareMode;
-    unsigned int _brNum, _flushNum;
+    unsigned int _brNum, _flushNum, _size;
 };
 
 int BP_init(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned fsmState,
