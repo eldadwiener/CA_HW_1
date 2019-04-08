@@ -196,7 +196,7 @@ public:
             _numEntries(numEntries), _tagMask((1 << tagSize) - 1), _rowMask(numEntries - 1), _histMask((1 << histSize) - 1),            
             _brNum(0), _flushNum(0)
     {
-		_size = numEntries * (tagSize + 32) //BTB size = (num of entries)*(size of line) TODO:maybe 30 instead of 32 
+		_size = numEntries * (tagSize + 30) //BTB size = (num of entries)*(size of line) TODO:maybe 30 instead of 32 
 			+ histSize * (numEntries*hmode + 1 - hmode) //hist size = histsize*(num of hists)
 			+ 2*pow(2,histSize)*(numEntries*fmode + 1 - fmode);// FSM size = (num of FSMs)*(sizeof FSM entry=2)*2^(histsize)
         _BTBentries = new BTBEntry[numEntries];
@@ -256,7 +256,7 @@ public:
         unsigned row = ((pc >> 2) & _rowMask); //remove 2 lsb zeroes, and taken same amount of bits as in the mask.
         unsigned tag = ((pc >> 2) & _tagMask);
         // Check if such a tag exists in the BTB
-        if (_BTBentries[row].tag != tag) // Tag does not exist 
+        if (_BTBentries[row].tag != tag || _BTBentries[row].targ != targetPc) // Tag does not exist 
         {   // TODO what happens if only need to update the targetPC?
             // these will not reset if they are global
             _history.resetEntry(row);
@@ -298,24 +298,6 @@ int BP_init(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned f
     mode hmode = (isGlobalHist == true) ? GLOBAL : LOCAL;
     mode fmode = (isGlobalTable == true) ? GLOBAL : LOCAL;
     state initstate = static_cast<state>(fsmState);
-    // TODO: check if you can cast fsmState into (state) directly, this shiz is ugly VVV
-/*
-    switch (fsmState)
-    {
-    case 0:
-        initstate = SNT;
-        break;
-    case 1:
-        initstate = WNT;
-        break;
-    case 2:
-        initstate = WT;
-        break;
-    case 3:
-        initstate = ST;
-        break;
-    }
-*/
     btb = new BTB(btbSize, historySize, tagSize, initstate, hmode, fmode, Shared);
     return 0;
 }
@@ -331,7 +313,7 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 
 void BP_GetStats(SIM_stats *curStats){
     btb->GetStats(curStats);
-	//TODO: delete BTB?
+	delete btb;
 	return;
 }
 
