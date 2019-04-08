@@ -178,13 +178,14 @@ private:
 class BTBEntry
 {
 public:
-    BTBEntry() : tag(0), targ(0) {}
+    BTBEntry() : tag(0), targ(0), valid(false) {}
     void updateBTBEntry(uint32_t _tag, uint32_t _targ)
     {
         tag = _tag;
         targ = _targ;
     }
     uint32_t tag, targ;
+	bool valid;
 };
 
 class BTB
@@ -215,8 +216,7 @@ public:
         unsigned row = ((pc >> 2) & _rowMask); //remove 2 lsb zeroes, and taken same amount of bits as in the mask.
         unsigned tag = ((pc >> 2) & _tagMask);
         // Check if such a tag exists in the BTB
-        // TODO: is it possible for the PC the be 0x0? what happens if the btbentry wasn't used yet?
-        if (_BTBentries[row].tag != tag) // no prediction available
+        if (_BTBentries[row].tag != tag || _BTBentries[row].valid == false) // no prediction available
         {
             *dst = pc + 4;
             return false;
@@ -256,7 +256,6 @@ public:
         unsigned row = ((pc >> 2) & _rowMask); //remove 2 lsb zeroes, and taken same amount of bits as in the mask.
         unsigned tag = ((pc >> 2) & _tagMask);
         // Check if such a tag exists in the BTB
-        // TODO: is it possible for the PC the be 0x0? what happens if the btbentry wasn't used yet?
         if (_BTBentries[row].tag != tag) // Tag does not exist 
         {   // TODO what happens if only need to update the targetPC?
             // these will not reset if they are global
@@ -272,9 +271,11 @@ public:
         // fix hist in case we use l/g-share, and update FSM
         hist = ( (pc >> _shareMode) & _histMask) ^ hist;
         _fsm.updatePredict(row, hist, res);
+		_BTBentries[row].valid = true;
     }
+
     void GetStats(SIM_stats *curStats)
-    {   // TODO: THIS
+    {   
         curStats->br_num = _brNum;
         curStats->flush_num = _flushNum;
         curStats->size = _size;
@@ -296,8 +297,9 @@ int BP_init(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned f
 	    return -1;
     mode hmode = (isGlobalHist == true) ? GLOBAL : LOCAL;
     mode fmode = (isGlobalTable == true) ? GLOBAL : LOCAL;
-    state initstate;
-    // TODO: check if you can cast fsmState into (state) directly, this shiz is ugly
+    state initstate = static_cast<state>(fsmState);
+    // TODO: check if you can cast fsmState into (state) directly, this shiz is ugly VVV
+/*
     switch (fsmState)
     {
     case 0:
@@ -313,6 +315,7 @@ int BP_init(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned f
         initstate = ST;
         break;
     }
+*/
     btb = new BTB(btbSize, historySize, tagSize, initstate, hmode, fmode, Shared);
     return 0;
 }
@@ -328,6 +331,7 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 
 void BP_GetStats(SIM_stats *curStats){
     btb->GetStats(curStats);
+	//TODO: delete BTB?
 	return;
 }
 
