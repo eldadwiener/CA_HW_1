@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <bitset>
 #include <iostream>
-#define NDEBUG
+//#define NDEBUG
 #include <assert.h>
 
 enum mode{GLOBAL,LOCAL};
@@ -90,28 +90,35 @@ public:
     {
         _initState = initState;
         _nLines = nLines;
-        _fsms = new state[nLines];
-        for (int i = 0; i < nLines; ++i)
+        _fsms = new state[nLines+1];
+        for (int i = 0; i <= nLines; ++i)
             _fsms[i] = initState;
     }
 
     branch getPredict(uint8_t nLine)
     {
         // DEBUG, make sure we don't overflow
-        assert(nLine < _nLines);
+        assert(nLine <= _nLines);
         // return T if we are in Strongly-Taken or Weakly-Taken states
+		cout << "************************************************************************" << endl;;//TODO remove it
+		cout << "in line " << (unsigned)nLine << " the state was " << _fsms[nLine];//TODO remove it
 		if (_fsms[nLine] == WT || _fsms[nLine] == ST)
         {
+			cout << " so the predict is T" << endl;//TODO remove it
 			return T;
 		}
+		cout << " so the predict is N" << endl;//TODO remove it
         return N;
     }
 
     void updateFSM(uint8_t nLine, branch res)
     {
         // DEBUG, make sure we don't overflow
-        assert(nLine < _nLines);
+        assert(nLine <= _nLines);
         // decide next state based on current state + new result
+		cout << "in line "<<(unsigned) nLine <<" the state was " << _fsms[nLine] ;//TODO remove it
+		cout << " and the real res was: ";;//TODO remove it
+		(res == T) ? cout << "T " : cout << "NT ";;//TODO remove it
         switch (_fsms[nLine]) 
         {
         case SNT:
@@ -127,13 +134,15 @@ public:
             _fsms[nLine] = ((res == T) ? ST : WT);
             break;
         }
+		cout << " and now the state is " << _fsms[nLine] << endl << endl;//TODO remove it
     }
 
     void resetEntry()
     {
-        for (int i = 0; i < _nLines; ++i)
+        for (int i = 0; i <= _nLines; ++i)
             _fsms[i] = _initState;
     }
+
 private:
     state* _fsms;
     uint8_t _nLines;
@@ -153,7 +162,7 @@ public:
         if (fmode == GLOBAL) nLines = 1;
         _entries = new FSMEntry[nLines];
         for(unsigned i=0; i< nLines; ++i)
-            _entries[i].initFSMEntry(pow(2,histSize),initState);
+            _entries[i].initFSMEntry(static_cast<uint8_t>(pow(2,histSize)-1),initState);
     }
     ~FSM() { delete[] _entries; }
 
@@ -171,6 +180,7 @@ public:
     {
         if (_fsmMode == GLOBAL) // theres only 1 FSM
             rowNum = 0;
+		cout << "using fsm-entry num: " << rowNum << endl;//TODO: remove it
         _entries[rowNum].updateFSM(history,res);
     }
 
@@ -235,17 +245,22 @@ public:
             _shareMode = MID;
     }
 
-    ~BTB() { delete[] _BTBentries; }
+    ~BTB() {
+		delete[] _BTBentries;
+	}
 
     
     bool predict(uint32_t pc, uint32_t *dst)
     {
+		cout << endl << "line: " << _brNum + 1 << endl;
         // Get row num, and Tag
         unsigned row = ((pc >> 2) & _rowMask); //remove 2 lsb zeroes, and taken same amount of bits as in the mask.
         unsigned tag = ((pc >> 2) & _tagMask);
+		cout << "the row in the BTB is: "<< row << endl;
         // Check if such a tag exists in the BTB
         if (_BTBentries[row].tag != tag || _BTBentries[row].valid == false) // no prediction available
         {
+			cout << "the tag not exist so the predict is go pc+4" << endl;//TODO remove it
             *dst = pc + 4;
             return false;
         }
@@ -274,6 +289,7 @@ public:
         if ((taken && (pred_dst != targetPc))
             || (!taken && (pred_dst != pc + 4)))
         {
+			cout << "BTB miss #######################################################" << endl;;//TODO remove it
             ++_flushNum;
         }
         // Get row num, and Tag
