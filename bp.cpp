@@ -86,12 +86,12 @@ public:
 
     // since we are dynamically allocating the FSM entry array,
     // we use a default constructor and do the init manually.
-    void initFSMEntry(uint8_t nLines, state initState)
+    void initFSMEntry(uint8_t histSize, state initState)
     {
         _initState = initState;
-        _nLines = nLines;
-        _fsms = new state[nLines+1];
-        for (int i = 0; i <= nLines; ++i)
+        _nLines = ((1<<histSize) - 1); // we save nLines-1 so we don't overflow the 8bit int
+        _fsms = new state[1<<histSize]; 
+        for (int i = 0; i <= _nLines; ++i)
             _fsms[i] = initState;
     }
 
@@ -100,14 +100,14 @@ public:
         // DEBUG, make sure we don't overflow
         assert(nLine <= _nLines);
         // return T if we are in Strongly-Taken or Weakly-Taken states
-		cout << "************************************************************************" << endl;;//TODO remove it
-		cout << "in line " << (unsigned)nLine << " the state was " << _fsms[nLine];//TODO remove it
+		//cout << "************************************************************************" << endl;;//TODO remove it
+		//cout << "in line " << (unsigned)nLine << " the state was " << _fsms[nLine];//TODO remove it
 		if (_fsms[nLine] == WT || _fsms[nLine] == ST)
         {
-			cout << " so the predict is T" << endl;//TODO remove it
+			//cout << " so the predict is T" << endl;//TODO remove it
 			return T;
 		}
-		cout << " so the predict is N" << endl;//TODO remove it
+		//cout << " so the predict is N" << endl;//TODO remove it
         return N;
     }
 
@@ -116,9 +116,9 @@ public:
         // DEBUG, make sure we don't overflow
         assert(nLine <= _nLines);
         // decide next state based on current state + new result
-		cout << "in line "<<(unsigned) nLine <<" the state was " << _fsms[nLine] ;//TODO remove it
-		cout << " and the real res was: ";;//TODO remove it
-		(res == T) ? cout << "T " : cout << "NT ";;//TODO remove it
+		//cout << "in line "<<(unsigned) nLine <<" the state was " << _fsms[nLine] ;//TODO remove it
+		//cout << " and the real res was: ";;//TODO remove it
+		//(res == T) ? cout << "T " : cout << "NT ";;//TODO remove it
         switch (_fsms[nLine]) 
         {
         case SNT:
@@ -134,7 +134,7 @@ public:
             _fsms[nLine] = ((res == T) ? ST : WT);
             break;
         }
-		cout << " and now the state is " << _fsms[nLine] << endl << endl;//TODO remove it
+		//cout << " and now the state is " << _fsms[nLine] << endl << endl;//TODO remove it
     }
 
     void resetEntry()
@@ -162,7 +162,7 @@ public:
         if (fmode == GLOBAL) nLines = 1;
         _entries = new FSMEntry[nLines];
         for(unsigned i=0; i< nLines; ++i)
-            _entries[i].initFSMEntry(static_cast<uint8_t>(pow(2,histSize)-1),initState);
+            _entries[i].initFSMEntry(histSize,initState);
     }
     ~FSM() { delete[] _entries; }
 
@@ -180,7 +180,7 @@ public:
     {
         if (_fsmMode == GLOBAL) // theres only 1 FSM
             rowNum = 0;
-		cout << "using fsm-entry num: " << rowNum << endl;//TODO: remove it
+		//cout << "using fsm-entry num: " << rowNum << endl;//TODO: remove it
         _entries[rowNum].updateFSM(history,res);
     }
 
@@ -230,9 +230,9 @@ public:
             _numEntries(numEntries), _tagMask((1 << tagSize) - 1), _rowMask(numEntries - 1), _histMask((1 << histSize) - 1),            
             _brNum(0), _flushNum(0)
     {
-		_size = numEntries * (tagSize + 30) //BTB size = (num of entries)*(size of line) TODO:maybe 30 instead of 32 
+		_size = numEntries * (tagSize + 30) //BTB size = (num of entries)*(size of line) 
 			+ histSize * (numEntries*hmode + 1 - hmode) //hist size = histsize*(num of hists)
-			+ 2*pow(2,histSize)*(numEntries*fmode + 1 - fmode);// FSM size = (num of FSMs)*(sizeof FSM entry=2)*2^(histsize)
+			+ 2*(1 << histSize)*(numEntries*fmode + 1 - fmode);// FSM size = (num of FSMs)*(sizeof FSM entry=2)*2^(histsize)
         _BTBentries = new BTBEntry[numEntries];
         if (shared == 0)
         {
@@ -252,15 +252,15 @@ public:
     
     bool predict(uint32_t pc, uint32_t *dst)
     {
-		cout << endl << "line: " << _brNum + 1 << endl;
+		//cout << endl << "line: " << _brNum + 1 << endl; //TODO: remove it
         // Get row num, and Tag
         unsigned row = ((pc >> 2) & _rowMask); //remove 2 lsb zeroes, and taken same amount of bits as in the mask.
         unsigned tag = ((pc >> 2) & _tagMask);
-		cout << "the row in the BTB is: "<< row << endl;
+		//cout << "the row in the BTB is: "<< row << endl; //TODO: remove it
         // Check if such a tag exists in the BTB
         if (_BTBentries[row].tag != tag || _BTBentries[row].valid == false) // no prediction available
         {
-			cout << "the tag not exist so the predict is go pc+4" << endl;//TODO remove it
+			//cout << "the tag not exist so the predict is go pc+4" << endl;//TODO remove it
             *dst = pc + 4;
             return false;
         }
@@ -289,7 +289,7 @@ public:
         if ((taken && (pred_dst != targetPc))
             || (!taken && (pred_dst != pc + 4)))
         {
-			cout << "BTB miss #######################################################" << endl;;//TODO remove it
+			//cout << "BTB miss #######################################################" << endl;;//TODO remove it
             ++_flushNum;
         }
         // Get row num, and Tag
